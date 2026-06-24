@@ -1,0 +1,491 @@
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+#include <ESP8266WebServer.h>
+#include <EEPROM.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+const char* AP_SSID     = "Relay_Control_AP";
+const char* AP_PASS     = "12345678";
+
+const char* mqtt_broker = "broker.hivemq.com";
+const int   mqtt_port   = 1883;
+const char* client_id   = "ESP8266_Relay_Control";
+
+const char* googleScriptURL = "https://script.google.com/macros/s/AKfycbxtE4KUjuilJjse6ESs9ZdCkAyECloclxtb7Qqad0mPXvWaQ-mn1KURZAQdzIxvdljSRA/exec";
+
+// Relay type: ACTIVE_LOW = relay triggers with LOW (common for ESP8266 relay modules)
+const bool RELAY_ACTIVE_LOW = true;
+
+// Helper to get physical pin state for a desired logical state
+int getPinState(bool logicalState) {
+  return RELAY_ACTIVE_LOW ? (logicalState ? LOW : HIGH) : (logicalState ? HIGH : LOW);
+}
+
+// Helper to get logical state from physical pin state
+bool getLogicalState(int pinState) {
+  return RELAY_ACTIVE_LOW ? (pinState == LOW) : (pinState == HIGH);
+}
+
+// ============================================================================
+// RELAYS - Grouped as: Fans (1&2), Lights (3&4), AC (5)
+// ============================================================================
+const int NUM_RELAYS = 5;
+const int relayPins[NUM_RELAYS] = {D1, D2, D6, D0, D5};
+
+// Relay configuration
+struct RelayGroup {
+  int groupId;
+  String name;
+  int firstRelay;
+  int lastRelay;
+  int power_w;
+  int priority;
+};
+
+RelayGroup groups[] = {
+  {1, "Fans",   0, 1, 150, 7},   // Relay 1 & 2 (0-index: 0,1)
+  {2, "Lights", 2, 3, 100, 6},   // Relay 3 & 4 (0-index: 2,3)
+  {3, "AC",     4, 4, 1500, 9}   // Relay 5 (0-index: 4)
+};
+
+const int NUM_GROUPS = sizeof(groups) / sizeof(groups[0]);
+
+// ============================================================================
+// MQTT TOPICS
+// ============================================================================
+const char* controlTopic = "rl/relay/control";
+const char* statusTopic  = "rl/relay/status";
+const char* debugTopic   = "rl/relay/debug";
+const char* registerTopic = "rl/relay/register";
+
+// ============================================================================
+// COMMAND QUEUE
+// ============================================================================
+struct PendingCmd {
+  int groupIndex;
+  bool state;
+};
+
+const int QUEUE_SIZE = 8;
+PendingCmd cmdQueue[QUEUE_SIZE];
+int qHead = 0;
+int qTail = 0;
+
+bool queueEmpty() { return qHead == qTail; }
+bool queueFull() { return ((qTail + 1) % QUEUE_SIZE) == qHead; }
+
+void enqueueCmd(int groupIndex, bool state) {
+  if (!queueFull()) {
+    cmdQueue[qTail].groupIndex = groupIndex;
+    cmdQueue[qTail].state = state;
+    qTail = (qTail + 1) % QUEUE_SIZE;
+    Serial.printf("📦 Queued: Group %d -> %s\n", groupIndex + 1, state ? "ON" : "OFF");
+  }
+}
+
+bool dequeueCmd(PendingCmd &out) {
+  if (queueEmpty()) return false;
+  out.groupIndex = cmdQueue[qHead].groupIndex;
+  out.state = cmdQueue[qHead].state;
+  qHead = (qHead + 1) % QUEUE_SIZE;
+  return true;
+}
+
+// ============================================================================
+// GLOBALS
+// ============================================================================
+ESP8266WebServer server(80);
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+StaticJsonDocument<256> jsonDoc;
+
+bool inConfigurationMode = false;
+bool registered = false;
+unsigned long lastReconnectAttempt = 0;
+const unsigned long reconnectInterval = 10000;
+unsigned long lastHeartbeat = 0;
+unsigned long lastStatusPublish = 0;
+const unsigned long HEARTBEAT_INTERVAL = 30000;
+const unsigned long STATUS_INTERVAL = 10000;
+
+String st;
+
+// ============================================================================
+// FORWARD DECLARATIONS
+// ============================================================================
+void connectToStoredWiFi();
+void startConfigurationMode();
+void createWebServer();
+void setupAP();
+String readEEPROM(int offset, int len);
+void setupMQTT();
+void reconnectMQTT();
+void mqttCallback(char* topic, byte* payload, unsigned int length);
+void processStateChanges();
+void publishStatus();
+void publishRegistration();
+void publishHeartbeat();
+void handleWiFiDisconnection();
+void sendTelemetryToSheets(int groupId, bool state);
+void controlGroup(int groupIndex, bool state);
+
+// ============================================================================
+// SETUP
+// ============================================================================
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n" + String(60) + "=");
+  Serial.println("ESP8266 Relay Controller - Grouped Loads");
+  Serial.println("Groups: Fans (Relay1&2), Lights (Relay3&4), AC (Relay5)");
+  Serial.println(String(60) + "=");
+
+  // Initialize relays (all OFF at start)
+  for (int i = 0; i < NUM_RELAYS; i++) {
+    pinMode(relayPins[i], OUTPUT);
+    digitalWrite(relayPins[i], getPinState(false));
+  }
+  
+  pinMode(LED_BUILTIN, OUTPUT);
+  EEPROM.begin(512);
+  delay(10);
+  connectToStoredWiFi();
+}
+
+// ============================================================================
+// LOOP
+// ============================================================================
+void loop() {
+  if (inConfigurationMode) {
+    server.handleClient();
+    digitalWrite(LED_BUILTIN, (millis() % 500 < 250) ? LOW : HIGH);
+    return;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    handleWiFiDisconnection();
+    return;
+  }
+
+  if (!mqttClient.connected()) {
+    unsigned long now = millis();
+    if (now - lastReconnectAttempt > reconnectInterval) {
+      lastReconnectAttempt = now;
+      reconnectMQTT();
+    }
+  } else {
+    mqttClient.loop();
+  }
+
+  processStateChanges();
+
+  // Periodic heartbeat
+  if (millis() - lastHeartbeat > HEARTBEAT_INTERVAL) {
+    publishHeartbeat();
+    lastHeartbeat = millis();
+  }
+
+  // Periodic status
+  if (millis() - lastStatusPublish > STATUS_INTERVAL) {
+    publishStatus();
+    lastStatusPublish = millis();
+  }
+
+  // LED heartbeat
+  if (millis() % 2000 < 100) {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+  }
+}
+
+// ============================================================================
+// CONTROL A GROUP OF RELAYS
+// ============================================================================
+void controlGroup(int groupIndex, bool state) {
+  RelayGroup group = groups[groupIndex];
+  Serial.printf("🔧 Controlling: %s -> %s\n", group.name.c_str(), state ? "ON" : "OFF");
+  
+  for (int i = group.firstRelay; i <= group.lastRelay; i++) {
+    digitalWrite(relayPins[i], getPinState(state));
+    Serial.printf("   Relay %d: %s\n", i + 1, state ? "ON" : "OFF");
+  }
+  
+  // Send telemetry to Google Sheets
+  sendTelemetryToSheets(group.groupId, state);
+}
+
+// ============================================================================
+// PROCESS QUEUED COMMANDS
+// ============================================================================
+void processStateChanges() {
+  PendingCmd cmd;
+  bool anyChanged = false;
+  
+  while (dequeueCmd(cmd)) {
+    controlGroup(cmd.groupIndex, cmd.state);
+    anyChanged = true;
+  }
+  
+  if (anyChanged) {
+    publishStatus();
+  }
+}
+
+// ============================================================================
+// MQTT CALLBACK - Receives commands from EMS
+// ============================================================================
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic, controlTopic) != 0) return;
+
+  DeserializationError error = deserializeJson(jsonDoc, payload, length);
+  if (error) {
+    Serial.println("❌ JSON Parse Error");
+    return;
+  }
+
+  int relayId = jsonDoc["load"].as<int>();  // 1, 2, 3, 4, or 5
+  const char* state = jsonDoc["state"].as<const char*>();
+  bool newState = (strcmp(state, "ON") == 0);
+
+  Serial.printf("📨 MQTT Received: Relay %d -> %s\n", relayId, state);
+
+  // Map relay ID to group
+  int groupIndex = -1;
+  if (relayId == 1 || relayId == 2) {
+    groupIndex = 0;  // Fans group
+  } else if (relayId == 3 || relayId == 4) {
+    groupIndex = 1;  // Lights group
+  } else if (relayId == 5) {
+    groupIndex = 2;  // AC group
+  }
+
+  if (groupIndex >= 0) {
+    enqueueCmd(groupIndex, newState);
+  } else {
+    Serial.printf("❌ Invalid relay ID: %d\n", relayId);
+  }
+}
+
+// ============================================================================
+// PUBLISH REGISTRATION (Tell EMS what loads we have)
+// ============================================================================
+void publishRegistration() {
+  StaticJsonDocument<1024> doc;
+  doc["device_id"] = WiFi.macAddress();
+  doc["device_type"] = "ESP8266_RelayController";
+  doc["num_groups"] = NUM_GROUPS;
+  
+  JsonArray groupsArray = doc.createNestedArray("groups");
+  for (int i = 0; i < NUM_GROUPS; i++) {
+    JsonObject group = groupsArray.createNestedObject();
+    group["id"] = groups[i].groupId;
+    group["name"] = groups[i].name;
+    group["power_w"] = groups[i].power_w;
+    group["priority"] = groups[i].priority;
+    group["relay_ids"] = "[" + String(groups[i].firstRelay + 1) + "," + String(groups[i].lastRelay + 1) + "]";
+  }
+  
+  char buffer[1024];
+  serializeJson(doc, buffer);
+  
+  if (mqttClient.publish(registerTopic, buffer)) {
+    registered = true;
+    Serial.println("\n✅ Registration sent to EMS");
+    Serial.printf("   Device: %s\n", WiFi.macAddress().c_str());
+    Serial.printf("   Groups: %d\n", NUM_GROUPS);
+  }
+}
+
+// ============================================================================
+// PUBLISH STATUS
+// ============================================================================
+void publishStatus() {
+  StaticJsonDocument<512> doc;
+  doc["device_id"] = WiFi.macAddress();
+  doc["timestamp"] = millis();
+  
+  JsonArray groupsArray = doc.createNestedArray("groups");
+  float totalPower = 0;
+  
+  for (int g = 0; g < NUM_GROUPS; g++) {
+    // Check if any relay in this group is ON
+    bool isOn = false;
+    for (int r = groups[g].firstRelay; r <= groups[g].lastRelay; r++) {
+      if (getLogicalState(digitalRead(relayPins[r]))) {
+        isOn = true;
+        break;
+      }
+    }
+    
+    JsonObject group = groupsArray.createNestedObject();
+    group["id"] = groups[g].groupId;
+    group["name"] = groups[g].name;
+    group["state"] = isOn ? "ON" : "OFF";
+    group["power_w"] = isOn ? groups[g].power_w : 0;
+    totalPower += isOn ? groups[g].power_w : 0;
+  }
+  
+  doc["total_power_kw"] = totalPower / 1000;
+  
+  char buffer[512];
+  serializeJson(doc, buffer);
+  mqttClient.publish(statusTopic, buffer);
+  
+  Serial.printf("📊 Status: %.2f kW\n", totalPower / 1000);
+}
+
+// ============================================================================
+// PUBLISH HEARTBEAT
+// ============================================================================
+void publishHeartbeat() {
+  StaticJsonDocument<256> doc;
+  doc["device_id"] = WiFi.macAddress();
+  doc["status"] = "online";
+  doc["registered"] = registered;
+  doc["uptime_seconds"] = millis() / 1000;
+  doc["rssi"] = WiFi.RSSI();
+  
+  char buffer[256];
+  serializeJson(doc, buffer);
+  mqttClient.publish("rl/relay/heartbeat", buffer);
+}
+
+// ============================================================================
+// GOOGLE SHEETS TELEMETRY
+// ============================================================================
+void sendTelemetryToSheets(int groupId, bool state) {
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient https;
+  
+  if (!https.begin(client, googleScriptURL)) {
+    Serial.println("HTTPS Failed");
+    return;
+  }
+  
+  https.addHeader("Content-Type", "application/json");
+  
+  StaticJsonDocument<128> doc;
+  doc["group_id"] = groupId;
+  doc["state"] = state ? "ON" : "OFF";
+  doc["timestamp"] = millis();
+  
+  String jsonData;
+  serializeJson(doc, jsonData);
+  
+  int httpCode = https.POST(jsonData);
+  https.end();
+}
+
+// ============================================================================
+// WIFI FUNCTIONS
+// ============================================================================
+void connectToStoredWiFi() {
+  String esid = readEEPROM(0, 32);
+  String epass = readEEPROM(32, 64);
+  
+  if (esid.length() == 0) {
+    startConfigurationMode();
+    return;
+  }
+  
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(esid);
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(esid.c_str(), epass.c_str());
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n✅ WiFi Connected");
+    Serial.print("📡 IP: ");
+    Serial.println(WiFi.localIP());
+    setupMQTT();
+  } else {
+    startConfigurationMode();
+  }
+}
+
+void setupMQTT() {
+  mqttClient.setServer(mqtt_broker, mqtt_port);
+  mqttClient.setCallback(mqttCallback);
+  mqttClient.setBufferSize(2048);
+  reconnectMQTT();
+}
+
+void reconnectMQTT() {
+  Serial.print("🔌 Connecting MQTT...");
+  String clientId = String(client_id) + "_" + WiFi.macAddress();
+  
+  if (mqttClient.connect(clientId.c_str())) {
+    Serial.println(" Connected!");
+    mqttClient.subscribe(controlTopic);
+    publishRegistration();
+    publishStatus();
+  } else {
+    Serial.println(" Failed");
+  }
+}
+
+void handleWiFiDisconnection() {
+  static unsigned long lastAttempt = 0;
+  if (millis() - lastAttempt > 5000) {
+    lastAttempt = millis();
+    WiFi.disconnect();
+    WiFi.begin();
+  }
+}
+
+void startConfigurationMode() {
+  inConfigurationMode = true;
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(AP_SSID, AP_PASS);
+  createWebServer();
+  server.begin();
+  Serial.println("🔧 Configuration Mode - Connect to AP: " + String(AP_SSID));
+}
+
+void createWebServer() {
+  server.on("/", []() {
+    String html = "<html><body><h2>ESP8266 Setup</h2>";
+    html += "<form action='/setting' method='get'>";
+    html += "SSID: <input name='ssid'><br>";
+    html += "Password: <input name='pass' type='password'><br>";
+    html += "<input type='submit' value='Save'></form>";
+    html += "</body></html>";
+    server.send(200, "text/html", html);
+  });
+  
+  server.on("/setting", []() {
+    String ssid = server.arg("ssid");
+    String pass = server.arg("pass");
+    if (ssid.length() > 0) {
+      for (int i = 0; i < 96; i++) EEPROM.write(i, 0);
+      for (int i = 0; i < ssid.length(); i++) EEPROM.write(i, ssid[i]);
+      for (int i = 0; i < pass.length(); i++) EEPROM.write(32 + i, pass[i]);
+      EEPROM.commit();
+      server.send(200, "text/html", "<html><body>Saved! Rebooting...</body></html>");
+      delay(1000);
+      ESP.restart();
+    }
+  });
+}
+
+String readEEPROM(int offset, int len) {
+  String result;
+  for (int i = offset; i < offset + len; i++) {
+    char c = char(EEPROM.read(i));
+    if (c == 0) break;
+    result += c;
+  }
+  return result;
+}

@@ -1,0 +1,5 @@
+include openleadr/templates/*.xml
+include openleadr/templates/parts/*.xml
+include openleadr/schema/*.xsd
+include openleadr/schema/LICENSES.txt
+exclude test/*
