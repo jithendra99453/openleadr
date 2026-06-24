@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Dashboard</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- FontAwesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+
+    <style>
+        :root {
+            --bg-1: #dff3ff;
+            --bg-2: #efe2ff;
+            --bg-3: #fff4de;
+            --glass-bg: rgba(255, 255, 255, 0.5);
+            --glass-bg-strong: rgba(255, 255, 255, 0.68);
+            --glass-border: rgba(255, 255, 255, 0.78);
+            --glass-grad-a: rgba(255, 255, 255, 0.44);
+            --glass-grad-b: rgba(255, 255, 255, 0.16);
+            --text-primary: #1c2433;
+            --text-secondary: #55607a;
+            --text-muted: #7a859f;
+            --surface-strong: rgba(255, 255, 255, 0.78);
+            --accent-blue: #3a7bff;
+            --accent-green: #0da56f;
+            --accent-red: #de4b59;
+            --accent-amber: #f59e0b;
+            --accent-purple: #7b4dff;
+            --accent-cyan: #06a5c7;
+            --accent-pink: #e649b4;
+            --shadow-soft: 0 8px 24px rgba(18, 38, 78, 0.08);
+            --shadow-hover: 0 16px 40px rgba(18, 38, 78, 0.16);
+            --radius: 20px;
+            --radius-sm: 12px;
+        }
+
+        body.dark-mode {
+            --bg-1: #0b1220;
+            --bg-2: #121b2f;
+            --bg-3: #1a2540;
+            --glass-bg: rgba(16, 25, 41, 0.74);
+            --glass-bg-strong: rgba(20, 31, 51, 0.86);
+            --glass-border: rgba(132, 153, 193, 0.28);
+            --glass-grad-a: rgba(113, 145, 206, 0.2);
+            --glass-grad-b: rgba(26, 39, 62, 0.35);
+            --text-primary: #e9f0ff;
+            --text-secondary: #bcc8e6;
+            --text-muted: #98a8cc;
+            --surface-strong: rgba(19, 30, 50, 0.88);
+            --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.35);
+            --shadow-hover: 0 18px 40px rgba(0, 0, 0, 0.45);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at 8% 20%, rgba(58, 123, 255, 0.2), transparent 30%),
+                radial-gradient(circle at 92% 12%, rgba(230, 73, 180, 0.16), transparent 32%),
+                radial-gradient(circle at 45% 82%, rgba(13, 165, 111, 0.15), transparent 34%),
+                linear-gradient(125deg, var(--bg-1), var(--bg-2) 45%, var(--bg-3));
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        body::before,
+        body::after {
+            content: "";
+            position: fixed;
+            width: 360px;
+            height: 360px;
+            border-radius: 50%;
+            z-index: -1;
+            filter: blur(18px);
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        body::before {
+            left: -120px;
+            top: 18vh;
+            background: linear-gradient(140deg, #8ce3ff, #7b4dff);
+        }
+
+        body::after {
+            right: -140px;
+            top: 60vh;
+            background: linear-gradient(140deg, #ffb9e8, #ffd28b);
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+        }
+
+        .navbar-custom {
+            background: rgba(255, 255, 255, 0.38);
+            border: 1px solid var(--glass-border);
+            border-left: 0;
+            border-right: 0;
+            padding: 0.8rem 0;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            position: sticky;
+            top: 0.8rem;
+            z-index: 100;
+            margin: 0 12px;
+            border-radius: 18px;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .navbar-custom .navbar-brand {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            font-size: 1.3rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .navbar-custom .navbar-brand img {
+            border-radius: 12px;
+            box-shadow: 0 8px 18px rgba(24, 43, 76, 0.2);
+        }
+
+        .navbar-toggler {
+            background: rgba(255, 255, 255, 0.6);
+        }
+
+        .navbar-toggler-icon {
+            filter: saturate(0) brightness(0.35);
+        }
+
+        .navbar-custom .nav-link {
+            color: var(--text-secondary);
+            font-weight: 700;
+            font-size: 0.85rem;
+            letter-spacing: 0.35px;
+            text-transform: uppercase;
+            padding: 0.58rem 1rem;
+            border-radius: 999px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.52);
+            background:
+                linear-gradient(145deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08)),
+                rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 4px 10px rgba(27, 45, 78, 0.06);
+            transform: translateY(0);
+            transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease, border-color 0.28s ease, color 0.28s ease, background-color 0.28s ease;
+        }
+
+        .navbar-custom .nav-link::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(118deg, rgba(255, 255, 255, 0) 32%, rgba(255, 255, 255, 0.42) 50%, rgba(255, 255, 255, 0) 68%);
+            transform: translateX(-160%);
+            transition: transform 0.8s ease;
+            pointer-events: none;
+        }
+
+        .navbar-custom .nav-link:hover,
+        .navbar-custom .nav-link.active {
+            color: #17356d;
+            background: rgba(255, 255, 255, 0.26);
+            border-color: rgba(255, 255, 255, 0.82);
+            transform: translateY(-2px);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 14px rgba(30, 55, 94, 0.1);
+        }
+
+        .navbar-custom .nav-link:hover::after,
+        .navbar-custom .nav-link.active::after {
+            transform: translateX(160%);
+        }
+
+        .theme-toggle {
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg-strong);
+            color: var(--text-primary);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-1px);
+        }
+
+        .page-header {
+            padding: 2.8rem 0 1.1rem;
+        }
+
+        .header-inline {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.9rem;
+            flex-wrap: wrap;
+        }
+
+        .page-header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: clamp(1.55rem, 2vw, 2.1rem);
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            color: #192741;
+        }
+
+        .dashboard-heading {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dashboard-heading img {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            box-shadow: 0 8px 16px rgba(24, 43, 76, 0.2);
+            object-fit: cover;
+        }
+
+        .page-header p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-top: 0.3rem;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.36rem 0.72rem;
+            border-radius: 999px;
+            border: 1px solid var(--glass-border);
+            background:
+                linear-gradient(145deg, var(--glass-grad-a), var(--glass-grad-b)),
+                var(--glass-bg);
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            color: var(--text-secondary);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #9aa6c2;
+        }
+
+        .status-pill.loading .status-dot {
+            background: #f59e0b;
+            box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .status-pill.online .status-dot {
+            background: #11b37d;
+        }
+
+        .status-pill.offline .status-dot {
+            background: #de4b59;
+        }
+
+        .last-updated {
+            display: block;
+            margin-top: 0.28rem;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            letter-spacing: 0.1px;
+        }
+
+        .metric-card,
+        .chart-card,
+        .control-card,
+        .footer {
+            background:
+                linear-gradient(145deg, var(--glass-grad-a), var(--glass-grad-b)),
+                var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .metric-card {
+            border-radius: var(--radius);
+            padding: 1.35rem;
+            transition: transform 0.35s ease, box-shadow 0.35s ease;
+            position: relative;
+            overflow: hidden;
+            isolation: isolate;
+            animation: revealUp 0.65s ease both;
+        }
+
+        .metric-card::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(125deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0));
+            pointer-events: none;
+        }
+
+        .metric-card::after,
+        .chart-card::after,
+        .control-card::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(120deg, rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0.22) 50%, rgba(255, 255, 255, 0) 65%);
+            transform: translateX(-140%);
+            animation: glassSheen 8s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .metric-card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-5px);
+        }
+
+        .metric-card .metric-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .metric-card .metric-head {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.9rem;
+        }
+
+        .metric-card .metric-label {
+            font-size: 0.82rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1.1px;
+            color: var(--text-muted);
+            margin-bottom: 0;
+        }
+
+        .metric-card .metric-value {
+            font-size: clamp(1.55rem, 2.1vw, 2rem);
+            font-weight: 800;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+
+        .metric-card .metric-unit {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
+
+        .icon-blue {
+            background: rgba(58, 123, 255, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .icon-green {
+            background: rgba(13, 165, 111, 0.2);
+            color: var(--accent-green);
+        }
+
+        .icon-amber {
+            background: rgba(245, 158, 11, 0.22);
+            color: var(--accent-amber);
+        }
+
+        .icon-red {
+            background: rgba(222, 75, 89, 0.2);
+            color: var(--accent-red);
+        }
+
+        .icon-purple {
+            background: rgba(123, 77, 255, 0.21);
+            color: var(--accent-purple);
+        }
+
+        .icon-cyan {
+            background: rgba(6, 165, 199, 0.2);
+            color: var(--accent-cyan);
+        }
+
+        .icon-pink {
+            background: rgba(230, 73, 180, 0.2);
+            color: var(--accent-pink);
+        }
+
+        .icon-occupancy {
+            background: rgba(160, 92, 255, 0.22);
+            color: #7c3aed;
+        }
+
+        .occupancy-present {
+            color: #129e6f;
+        }
+
+        .occupancy-absent {
+            color: #d94457;
+        }
+
+        .occupancy-pending {
+            color: var(--text-muted);
+        }
+
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.28rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: 0.2px;
+        }
+
+        .section-title i {
+            color: var(--accent-blue);
+            font-size: 1rem;
+            background: rgba(255, 255, 255, 0.5);
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.65);
+        }
+
+        .chart-card {
+            border-radius: var(--radius);
+            padding: 1.3rem;
+            margin-bottom: 1.2rem;
+            position: relative;
+            overflow: hidden;
+            isolation: isolate;
+            animation: revealUp 0.7s ease both;
+        }
+
+        .chart-card h5 {
+            font-size: 0.9rem;
+            font-weight: 800;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.7rem;
+            border-bottom: 1px solid rgba(130, 149, 192, 0.22);
+            position: relative;
+            z-index: 1;
+        }
+
+        .chart-card canvas {
+            width: 100% !important;
+            height: 250px !important;
+            display: block;
+            position: relative;
+            z-index: 1;
+        }
+
+        .control-card {
+            border-radius: var(--radius);
+            padding: 1.45rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            isolation: isolate;
+            transition: transform 0.35s ease, box-shadow 0.35s ease;
+            animation: revealUp 0.75s ease both;
+        }
+
+        .control-card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-4px);
+        }
+
+        .control-card .device-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.1rem;
+            font-size: 1.55rem;
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            color: #2b3c5c;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 8px 18px rgba(40, 58, 92, 0.14);
+            z-index: 1;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .control-card .device-icon i {
+            display: inline-block;
+            transform-origin: center center;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .device-status {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.18rem 0.65rem;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 0.85rem;
+            transition: all 0.45s ease;
+            background: rgba(120, 130, 155, 0.12);
+            color: var(--text-muted);
+        }
+
+        .light-on .device-status {
+            background: rgba(16, 185, 129, 0.15);
+            color: #059669;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.18);
+        }
+
+        .fan-on .device-status {
+            background: rgba(58, 123, 255, 0.15);
+            color: #2563eb;
+            box-shadow: 0 0 12px rgba(58, 123, 255, 0.18);
+        }
+
+        .device-icon-light {
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                background 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .device-icon-light i {
+            transition: color 0.4s ease, filter 0.4s ease, transform 0.4s ease;
+        }
+
+        .device-icon-fan i {
+            display: inline-block;
+            transform-origin: center;
+            transition: color 0.4s ease, filter 0.4s ease;
+        }
+
+        .control-card.device-light::before,
+        .control-card.device-fan::before,
+        .control-card.device-ac::before {
+            content: "";
+            position: absolute;
+            inset: -50% -35%;
+            background: radial-gradient(circle at center, rgba(255, 255, 255, 0.18), transparent 60%);
+            transform: translateY(24px) scale(0.85);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .control-card.device-light::after,
+        .control-card.device-fan::after,
+        .control-card.device-ac::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            transform: translate(-50%, -60%) scale(0.6);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        /* ========== LIGHT ON STATE ========== */
+        .control-card.light-on {
+            border-color: rgba(16, 185, 129, 0.6);
+            box-shadow:
+                0 14px 38px rgba(16, 185, 129, 0.22),
+                0 0 0 1px rgba(16, 185, 129, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .control-card.light-on::before {
+            background: radial-gradient(ellipse at 50% 40%, rgba(16, 185, 129, 0.45), rgba(245, 208, 66, 0.12) 55%, transparent 72%);
+            animation: cardGlowPulse 3s ease-in-out infinite;
+            opacity: 0.92;
+            transform: translateY(14px) scale(1);
+        }
+
+        .control-card.light-on::after {
+            border: 2px solid rgba(16, 185, 129, 0.3);
+            animation: ringPulse 2.2s ease-out infinite;
+            opacity: 1;
+        }
+
+        .control-card.light-on .device-icon-light {
+            animation: floatLight 2.4s ease-in-out infinite;
+            background: linear-gradient(145deg, rgba(16, 185, 129, 0.25), rgba(245, 208, 66, 0.15));
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.95),
+                0 0 18px rgba(16, 185, 129, 0.35),
+                0 12px 28px rgba(16, 185, 129, 0.22);
+        }
+
+        .control-card.light-on .device-icon-light i {
+            color: #f5c518;
+            filter: drop-shadow(0 0 10px rgba(245, 197, 24, 0.6)) drop-shadow(0 0 24px rgba(245, 197, 24, 0.25));
+            animation: bulbPulse 2s ease-in-out infinite;
+        }
+
+        /* ========== FAN ON STATE ========== */
+        .control-card.fan-on {
+            border-color: rgba(58, 123, 255, 0.6);
+            box-shadow:
+                0 14px 38px rgba(58, 123, 255, 0.22),
+                0 0 0 1px rgba(58, 123, 255, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .control-card.fan-on::before {
+            background: radial-gradient(ellipse at 50% 40%, rgba(58, 123, 255, 0.4), rgba(6, 165, 199, 0.1) 55%, transparent 72%);
+            animation: cardGlowPulse 2.2s ease-in-out infinite;
+            opacity: 0.88;
+            transform: translateY(14px) scale(1);
+        }
+
+        .control-card.fan-on::after {
+            border: 2px solid rgba(58, 123, 255, 0.3);
+            animation: ringPulse 1.6s ease-out infinite;
+            opacity: 1;
+        }
+
+        .control-card.fan-on .device-icon-fan {
+            background: linear-gradient(145deg, rgba(58, 123, 255, 0.2), rgba(6, 165, 199, 0.12));
+            border-color: rgba(58, 123, 255, 0.5);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.95),
+                0 0 18px rgba(58, 123, 255, 0.3),
+                0 12px 28px rgba(58, 123, 255, 0.18);
+        }
+
+        .control-card.fan-on .device-icon-fan i {
+            color: #3a7bff;
+            filter: drop-shadow(0 0 8px rgba(58, 123, 255, 0.45));
+            animation: spinFan 0.8s linear infinite;
+        }
+
+        .wind-lines {
+            position: absolute;
+            top: 15%;
+            right: 8%;
+            width: 40px;
+            height: 50px;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .wind-lines span {
+            display: block;
+            height: 2px;
+            margin-bottom: 6px;
+            border-radius: 2px;
+            background: rgba(58, 123, 255, 0.35);
+            animation: none;
+        }
+
+        .wind-lines span:nth-child(1) {
+            width: 22px;
+        }
+
+        .wind-lines span:nth-child(2) {
+            width: 30px;
+            margin-left: 4px;
+        }
+
+        .wind-lines span:nth-child(3) {
+            width: 18px;
+            margin-left: 8px;
+        }
+
+        .fan-on .wind-lines {
+            opacity: 1;
+        }
+
+        .fan-on .wind-lines span {
+            animation: windDrift 1.2s ease-in-out infinite;
+        }
+
+        .fan-on .wind-lines span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .fan-on .wind-lines span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        /* ========== AC ON STATE ========== */
+        .control-card.ac-on {
+            border-color: rgba(6, 165, 199, 0.6);
+            box-shadow:
+                0 14px 38px rgba(6, 165, 199, 0.22),
+                0 0 0 1px rgba(6, 165, 199, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .control-card.ac-on::before {
+            background: radial-gradient(ellipse at 50% 40%, rgba(6, 165, 199, 0.45), rgba(58, 123, 255, 0.1) 55%, transparent 72%);
+            animation: cardGlowPulse 2.2s ease-in-out infinite;
+            opacity: 0.88;
+            transform: translateY(14px) scale(1);
+        }
+
+        .control-card.ac-on::after {
+            border: 2px solid rgba(6, 165, 199, 0.3);
+            animation: ringPulse 1.6s ease-out infinite;
+            opacity: 1;
+        }
+
+        .control-card.ac-on .device-icon-ac {
+            background: linear-gradient(145deg, rgba(6, 165, 199, 0.2), rgba(58, 123, 255, 0.12));
+            border-color: rgba(6, 165, 199, 0.5);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.95),
+                0 0 18px rgba(6, 165, 199, 0.3),
+                0 12px 28px rgba(6, 165, 199, 0.18);
+        }
+
+        .control-card.ac-on .device-icon-ac i {
+            color: #06a5c7;
+            filter: drop-shadow(0 0 8px rgba(6, 165, 199, 0.45));
+            animation: spinFan 4s linear infinite;
+        }
+
+        .ac-cooling-lines {
+            position: absolute;
+            top: 15%;
+            right: 8%;
+            width: 40px;
+            height: 50px;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .ac-cooling-lines span {
+            display: block;
+            height: 2px;
+            margin-bottom: 6px;
+            border-radius: 2px;
+            background: rgba(6, 165, 199, 0.35);
+            animation: none;
+        }
+
+        .ac-cooling-lines span:nth-child(1) {
+            width: 18px;
+        }
+
+        .ac-cooling-lines span:nth-child(2) {
+            width: 26px;
+            margin-left: 4px;
+        }
+
+        .ac-cooling-lines span:nth-child(3) {
+            width: 22px;
+            margin-left: 2px;
+        }
+
+        .ac-on .ac-cooling-lines {
+            opacity: 1;
+        }
+
+        .ac-on .ac-cooling-lines span {
+            animation: windDrift 1.5s ease-in-out infinite;
+        }
+
+        .ac-on .ac-cooling-lines span:nth-child(2) {
+            animation-delay: 0.3s;
+        }
+
+        .ac-on .ac-cooling-lines span:nth-child(3) {
+            animation-delay: 0.6s;
+        }
+
+        /* ========== OFF STATES (RED GLOW) ========== */
+        .control-card.light-off,
+        .control-card.fan-off,
+        .control-card.ac-off {
+            border-color: rgba(222, 75, 89, 0.6);
+            box-shadow:
+                0 14px 38px rgba(222, 75, 89, 0.22),
+                0 0 0 1px rgba(222, 75, 89, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        }
+
+        .control-card.light-off::before,
+        .control-card.fan-off::before,
+        .control-card.ac-off::before {
+            background: radial-gradient(ellipse at 50% 40%, rgba(222, 75, 89, 0.45), rgba(222, 75, 89, 0.1) 55%, transparent 72%);
+            animation: cardGlowPulse 3s ease-in-out infinite;
+            opacity: 0.92;
+            transform: translateY(14px) scale(1);
+        }
+
+        .control-card.light-off .device-icon-light,
+        .control-card.fan-off .device-icon-fan,
+        .control-card.ac-off .device-icon-ac {
+            background: rgba(222, 75, 89, 0.15);
+            border-color: rgba(222, 75, 89, 0.4);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.95),
+                0 0 18px rgba(222, 75, 89, 0.3),
+                0 12px 28px rgba(222, 75, 89, 0.18);
+        }
+
+        .control-card.light-off .device-icon-light i,
+        .control-card.fan-off .device-icon-fan i,
+        .control-card.ac-off .device-icon-ac i {
+            color: #de4b59;
+            filter: drop-shadow(0 0 10px rgba(222, 75, 89, 0.6));
+        }
+
+        .light-off .device-status,
+        .fan-off .device-status,
+        .ac-off .device-status {
+            background: rgba(222, 75, 89, 0.15);
+            color: #de4b59;
+            box-shadow: 0 0 12px rgba(222, 75, 89, 0.18);
+        }
+
+        .light-rays {
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 100px;
+            opacity: 0;
+            transition: opacity 0.6s ease;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .light-rays span {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 2px;
+            height: 18px;
+            background: linear-gradient(to top, rgba(245, 197, 24, 0.45), transparent);
+            transform-origin: bottom center;
+            border-radius: 2px;
+        }
+
+        .light-rays span:nth-child(1) {
+            transform: translate(-50%, -100%) rotate(0deg);
+        }
+
+        .light-rays span:nth-child(2) {
+            transform: translate(-50%, -100%) rotate(45deg);
+        }
+
+        .light-rays span:nth-child(3) {
+            transform: translate(-50%, -100%) rotate(90deg);
+        }
+
+        .light-rays span:nth-child(4) {
+            transform: translate(-50%, -100%) rotate(135deg);
+        }
+
+        .light-rays span:nth-child(5) {
+            transform: translate(-50%, -100%) rotate(180deg);
+        }
+
+        .light-rays span:nth-child(6) {
+            transform: translate(-50%, -100%) rotate(225deg);
+        }
+
+        .light-rays span:nth-child(7) {
+            transform: translate(-50%, -100%) rotate(270deg);
+        }
+
+        .light-rays span:nth-child(8) {
+            transform: translate(-50%, -100%) rotate(315deg);
+        }
+
+        .light-on .light-rays {
+            opacity: 1;
+            animation: raysRotate 8s linear infinite;
+        }
+
+        .control-card .device-name {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+        }
+
+        body.dark-mode .navbar-custom .nav-link {
+            border-color: rgba(132, 153, 193, 0.38);
+            background:
+                linear-gradient(145deg, rgba(113, 145, 206, 0.18), rgba(26, 39, 62, 0.16)),
+                rgba(15, 24, 39, 0.22);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 10px rgba(0, 0, 0, 0.18);
+        }
+
+        body.dark-mode .navbar-custom .nav-link:hover,
+        body.dark-mode .navbar-custom .nav-link.active {
+            color: #d8e4ff;
+            background: rgba(53, 77, 123, 0.3);
+            border-color: rgba(132, 153, 193, 0.62);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 16px rgba(0, 0, 0, 0.24);
+        }
+
+        body.dark-mode .navbar-toggler {
+            background: rgba(26, 37, 59, 0.82);
+            border: 1px solid rgba(132, 153, 193, 0.32);
+        }
+
+        body.dark-mode .navbar-toggler-icon {
+            filter: invert(1) brightness(1.9);
+        }
+
+        body.dark-mode .control-card .device-icon,
+        body.dark-mode .section-title i {
+            background: rgba(30, 42, 66, 0.72);
+            border-color: rgba(132, 153, 193, 0.4);
+            color: #dbe7ff;
+        }
+
+        body.dark-mode .btn-on,
+        body.dark-mode .btn-off,
+        body.dark-mode .btn-reset {
+            background: rgba(34, 47, 72, 0.8);
+            border-color: rgba(132, 153, 193, 0.3);
+            color: #d9e5ff;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        body.dark-mode .chart-card h5 {
+            border-bottom-color: rgba(132, 153, 193, 0.3);
+        }
+
+        body.dark-mode .page-header h1 {
+            color: #e6efff;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body:not(.light-mode) {
+                --bg-1: #0b1220;
+                --bg-2: #121b2f;
+                --bg-3: #1a2540;
+                --glass-bg: rgba(16, 25, 41, 0.74);
+                --glass-bg-strong: rgba(20, 31, 51, 0.86);
+                --glass-border: rgba(132, 153, 193, 0.28);
+                --glass-grad-a: rgba(113, 145, 206, 0.2);
+                --glass-grad-b: rgba(26, 39, 62, 0.35);
+                --text-primary: #e9f0ff;
+                --text-secondary: #bcc8e6;
+                --text-muted: #98a8cc;
+                --surface-strong: rgba(19, 30, 50, 0.88);
+                --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.35);
+                --shadow-hover: 0 18px 40px rgba(0, 0, 0, 0.45);
+            }
+        }
+
+        .control-btn-group {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn-on,
+        .btn-off,
+        .btn-reset {
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.45);
+            color: #30405d;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+            backdrop-filter: blur(8px);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            border-radius: var(--radius-sm);
+            font-weight: 800;
+            letter-spacing: 0.55px;
+            text-transform: uppercase;
+        }
+
+        .btn-on,
+        .btn-off {
+            padding: 0.58rem 0;
+            font-size: 0.77rem;
+        }
+
+        .btn-reset {
+            width: 100%;
+            padding: 0.52rem 0;
+            font-size: 0.72rem;
+        }
+
+        .btn-on:hover {
+            border-color: rgba(13, 165, 111, 0.56);
+            color: #0c7f57;
+            transform: translateY(-1px);
+        }
+
+        .btn-off:hover {
+            border-color: rgba(222, 75, 89, 0.56);
+            color: #b33242;
+            transform: translateY(-1px);
+        }
+
+        .btn-reset:hover {
+            border-color: rgba(58, 123, 255, 0.56);
+            color: #2d5fd6;
+            transform: translateY(-1px);
+        }
+
+        .btn-on.btn-success {
+            background: linear-gradient(135deg, #1ec98b, #0da56f) !important;
+            border-color: rgba(13, 165, 111, 0.95) !important;
+            color: #fff !important;
+            box-shadow: 0 8px 18px rgba(13, 165, 111, 0.35) !important;
+        }
+
+        .btn-off.btn-danger {
+            background: linear-gradient(135deg, #f06b78, #de4b59) !important;
+            border-color: rgba(222, 75, 89, 0.95) !important;
+            color: #fff !important;
+            box-shadow: 0 8px 18px rgba(222, 75, 89, 0.28) !important;
+        }
+
+        .btn-reset.btn-primary {
+            background: linear-gradient(135deg, #5b95ff, #3a7bff) !important;
+            border-color: rgba(58, 123, 255, 0.95) !important;
+            color: #fff !important;
+            box-shadow: 0 8px 18px rgba(58, 123, 255, 0.3) !important;
+        }
+
+        .live-dot {
+            width: 9px;
+            height: 9px;
+            background: #13b176;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 0 0 rgba(19, 177, 118, 0.6);
+            animation: pulse 1.9s ease-in-out infinite;
+        }
+
+        .footer {
+            border-radius: var(--radius);
+            padding: 1rem 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin: 2rem 0 1.3rem;
+        }
+
+        .metric-card:nth-child(1),
+        .chart-card:nth-child(1),
+        .control-card:nth-child(1) {
+            animation-delay: 0.05s;
+        }
+
+        .metric-card:nth-child(2),
+        .chart-card:nth-child(2),
+        .control-card:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+
+        .metric-card:nth-child(3),
+        .chart-card:nth-child(3),
+        .control-card:nth-child(3) {
+            animation-delay: 0.15s;
+        }
+
+        .metric-card:nth-child(4),
+        .chart-card:nth-child(4),
+        .control-card:nth-child(4) {
+            animation-delay: 0.2s;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(19, 177, 118, 0.6);
+            }
+
+            50% {
+                opacity: 0.58;
+                transform: scale(0.85);
+                box-shadow: 0 0 0 10px rgba(19, 177, 118, 0);
+            }
+        }
+
+        @keyframes revealUp {
+            from {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes spinFan {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes floatLight {
+
+            0%,
+            100% {
+                transform: translateY(0);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 0 18px rgba(16, 185, 129, 0.35), 0 12px 28px rgba(16, 185, 129, 0.22);
+            }
+
+            50% {
+                transform: translateY(-8px);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 0 26px rgba(16, 185, 129, 0.45), 0 20px 36px rgba(16, 185, 129, 0.3);
+            }
+        }
+
+        @keyframes bulbPulse {
+
+            0%,
+            100% {
+                filter: drop-shadow(0 0 10px rgba(245, 197, 24, 0.6)) drop-shadow(0 0 24px rgba(245, 197, 24, 0.25));
+                transform: scale(1);
+            }
+
+            50% {
+                filter: drop-shadow(0 0 16px rgba(245, 197, 24, 0.75)) drop-shadow(0 0 36px rgba(245, 197, 24, 0.35));
+                transform: scale(1.08);
+            }
+        }
+
+        @keyframes cardGlowPulse {
+
+            0%,
+            100% {
+                opacity: 0.65;
+                transform: translateY(20px) scale(0.95);
+            }
+
+            50% {
+                opacity: 1;
+                transform: translateY(12px) scale(1.04);
+            }
+        }
+
+        @keyframes ringPulse {
+            0% {
+                transform: translate(-50%, -60%) scale(0.6);
+                opacity: 0.7;
+            }
+
+            70% {
+                transform: translate(-50%, -60%) scale(1.6);
+                opacity: 0;
+            }
+
+            100% {
+                transform: translate(-50%, -60%) scale(1.6);
+                opacity: 0;
+            }
+        }
+
+        @keyframes windDrift {
+
+            0%,
+            100% {
+                transform: translateX(0);
+                opacity: 0.3;
+            }
+
+            50% {
+                transform: translateX(12px);
+                opacity: 0.7;
+            }
+        }
+
+        @keyframes raysRotate {
+            from {
+                transform: translateX(-50%) rotate(0deg);
+            }
+
+            to {
+                transform: translateX(-50%) rotate(360deg);
+            }
+        }
+
+        @keyframes glassSheen {
+
+            0%,
+            72% {
+                transform: translateX(-140%);
+            }
+
+            100% {
+                transform: translateX(140%);
+            }
+        }
+
+        @media (max-width: 992px) {
+            .navbar-custom {
+                margin: 0 8px;
+                top: 0.5rem;
+            }
+
+            .navbar-custom .navbar-collapse {
+                margin-top: 0.75rem;
+                padding: 0.8rem;
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.5);
+                border: 1px solid rgba(255, 255, 255, 0.62);
+            }
+
+            .page-header {
+                padding-top: 2rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .page-header h1 {
+                font-size: 1.45rem;
+            }
+
+            .dashboard-heading img {
+                width: 30px;
+                height: 30px;
+            }
+
+            .metric-card,
+            .chart-card,
+            .control-card {
+                padding: 1.1rem;
+                border-radius: 16px;
+            }
+
+            .metric-card .metric-value {
+                font-size: 1.35rem;
+            }
+
+            .header-inline {
+                align-items: flex-start;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .navbar-custom {
+                border-radius: 14px;
+            }
+
+            .control-btn-group {
+                grid-template-columns: 1fr;
+            }
+
+            .btn-logout {
+                width: 100%;
+                margin-top: 0.6rem;
+            }
+        }
+
+        .cooldown-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            margin-bottom: 0.85rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: var(--radius-sm);
+            background: rgba(222, 75, 89, 0.08);
+            color: var(--accent-red);
+            border: 1px solid rgba(222, 75, 89, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        body.dark-mode .cooldown-container {
+            background: rgba(222, 75, 89, 0.12);
+            color: #ff6b7a;
+            border-color: rgba(222, 75, 89, 0.25);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-custom">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <img src="https://imgs.search.brave.com/hDE3YhZ2teHDgCFciUVOC4NKcaiNeSiUe72NnzbP1vs/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9pLnBp/bmltZy5jb20vb3Jp/Z2luYWxzLzRkLzZk/LzM0LzRkNmQzNDIx/NDgzNzA1NmUyOWMw/NzMzOTM5ZTQwYmZh/LmpwZw"
+                    alt="Logo" width="40" height="40">
+                Live Dashboard
+            </a>
+
+            <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav mx-auto gap-1">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#home">Overview</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#graphRepresentation">Analytics</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#manual_buttons">Controls</a>
+                    </li>
+                </ul>
+                <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark mode"
+                    title="Toggle dark mode">
+                    <i id="themeToggleIcon" class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+
+        <!-- Page Header -->
+        <div class="page-header" id="home">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <h1>System Overview</h1>
+                    <div class="header-inline">
+                        <div id="apiStatus" class="status-pill loading" aria-live="polite">
+                            <span class="status-dot" id="apiStatusDot"></span>
+                            <span id="apiStatusText">Connecting...</span>
+                        </div>
+                    </div>
+                    <small class="last-updated" id="lastUpdatedLabel">Last update: --</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metric Cards -->
+        <div class="row g-3 mb-4">
+            <!-- Date -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-pink"><i class="fa-regular fa-calendar"></i></div>
+                        <div class="metric-label">Date</div>
+                    </div>
+                    <div class="metric-value" id="date">--</div>
+                </div>
+            </div>
+            <!-- Time -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-blue"><i class="fa-regular fa-clock"></i></div>
+                        <div class="metric-label">Time</div>
+                    </div>
+                    <div class="metric-value" id="time">--</div>
+                </div>
+            </div>
+            <!-- Voltage -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-purple"><i class="fa-solid fa-plug"></i></div>
+                        <div class="metric-label">Voltage</div>
+                    </div>
+                    <div class="metric-value"><span id="voltage">--</span><span class="metric-unit">V</span></div>
+                </div>
+            </div>
+            <!-- Current -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-amber"><i class="fa-solid fa-bolt"></i></div>
+                        <div class="metric-label">Current</div>
+                    </div>
+                    <div class="metric-value"><span id="current">--</span><span class="metric-unit">A</span></div>
+                </div>
+            </div>
+            <!-- Temperature -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-red"><i class="fa-solid fa-temperature-half"></i></div>
+                        <div class="metric-label">Temperature</div>
+                    </div>
+                    <div class="metric-value"><span id="temperature">--</span><span class="metric-unit">&deg;C</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Humidity -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-cyan"><i class="fa-solid fa-droplet"></i></div>
+                        <div class="metric-label">Humidity</div>
+                    </div>
+                    <div class="metric-value"><span id="humidity">--</span><span class="metric-unit">%</span></div>
+                </div>
+            </div>
+            <!-- Energy -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-green"><i class="fa-solid fa-lightbulb"></i></div>
+                        <div class="metric-label">Energy</div>
+                    </div>
+                    <div class="metric-value"><span id="energy">--</span><span class="metric-unit">kWh</span></div>
+                </div>
+            </div>
+            <!-- Human Presence -->
+            <div class="col-xl-3 col-md-4 col-sm-6">
+                <div class="metric-card">
+                    <div class="metric-head">
+                        <div class="metric-icon icon-occupancy"><i class="fa-solid fa-user"></i></div>
+                        <div class="metric-label">Human Presence</div>
+                    </div>
+                    <div class="metric-value"><span id="occupancy" class="occupancy-pending">--</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div id="graphRepresentation" class="mb-4">
+            <h3 class="section-title"><i class="fa-solid fa-chart-line"></i> Analytics</h3>
+            <div class="row g-3">
+                <div class="col-lg-6">
+                    <div class="chart-card">
+                        <h5><i class="fa-solid fa-bolt me-2" style="color:var(--accent-amber)"></i>Current</h5>
+                        <canvas id="currentChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-card">
+                        <h5><i class="fa-solid fa-temperature-half me-2" style="color:var(--accent-red)"></i>Temperature
+                        </h5>
+                        <canvas id="temperatureChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-card">
+                        <h5><i class="fa-solid fa-droplet me-2" style="color:var(--accent-cyan)"></i>Humidity</h5>
+                        <canvas id="humidityChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-card">
+                        <h5><i class="fa-solid fa-plug me-2" style="color:var(--accent-purple)"></i>Voltage</h5>
+                        <canvas id="voltageChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-card">
+                        <h5><i class="fa-solid fa-lightbulb me-2" style="color:var(--accent-green)"></i>Energy</h5>
+                        <canvas id="energyChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-card">
+                        <h5><i class="fa-solid fa-user me-2" style="color:#7c3aed"></i>Human Presence</h5>
+                        <canvas id="occupancyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Section -->
+        <div id="manual_buttons" class="mb-5">
+            <h3 class="section-title"><i class="fa-solid fa-sliders"></i> Device Controls</h3>
+            
+            <!-- Cooldown Settings Panel -->
+            <div class="row mb-3">
+                <div class="col-12">
+                    <div class="metric-card p-3 d-flex align-items-center justify-content-between flex-wrap gap-3" style="border-radius: var(--radius-sm);">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="fa-solid fa-gears" style="color: var(--accent-blue); font-size: 1.2rem;"></i>
+                            <span style="font-weight: 700; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">Override Settings</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-3 flex-wrap">
+                            <div class="d-flex align-items-center gap-2">
+                                <label for="cooldownSelect" style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin: 0;">Lockout Cooldown:</label>
+                                <select id="cooldownSelect" class="form-select form-select-sm" style="width: auto; background: var(--glass-bg); color: var(--text-primary); border-color: var(--glass-border); border-radius: 8px; font-weight: 600;">
+                                    <option value="0">None (Instant Override)</option>
+                                    <option value="5">5 seconds</option>
+                                    <option value="10">10 seconds</option>
+                                    <option value="60">1 minute</option>
+                                    <option value="600" selected>10 minutes</option>
+                                </select>
+                            </div>
+                            <button id="btnResetAll" class="btn btn-sm btn-outline-danger" style="border-radius: 8px; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.5px; text-transform: uppercase;">
+                                <i class="fa-solid fa-trash-can me-1"></i> Clear All Cooldowns
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <!-- Lights -->
+                <div class="col-lg-4 col-md-6">
+                    <div class="control-card device-light" data-relay="1">
+                        <div class="light-rays">
+                            <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                        <div class="device-icon device-icon-light"><i class="fa-regular fa-lightbulb"></i></div>
+                        <div class="device-name">Lights</div>
+                        <div class="device-status">Offline</div>
+                        <div class="cooldown-container" id="cooldown-container-1" style="display: none;">
+                            <i class="fa-solid fa-clock"></i> Next override: <span id="cooldown-time-1">10:00</span>
+                        </div>
+                        <div class="control-btn-group">
+                            <button id="btnOn1" class="btn-on">ON</button>
+                            <button id="btnOff1" class="btn-off">OFF</button>
+                        </div>
+                        <button id="btnReset1" class="btn-reset btn-primary mt-2" style="display: none;">Reset Cooldown</button>
+                    </div>
+                </div>
+                <!-- Fans -->
+                <div class="col-lg-4 col-md-6">
+                    <div class="control-card device-fan" data-relay="3">
+                        <div class="wind-lines"><span></span><span></span><span></span></div>
+                        <div class="device-icon device-icon-fan"><i class="fa-solid fa-fan"></i></div>
+                        <div class="device-name">Fans</div>
+                        <div class="device-status">Offline</div>
+                        <div class="cooldown-container" id="cooldown-container-3" style="display: none;">
+                            <i class="fa-solid fa-clock"></i> Next override: <span id="cooldown-time-3">10:00</span>
+                        </div>
+                        <div class="control-btn-group">
+                            <button id="btnOn3" class="btn-on">ON</button>
+                            <button id="btnOff3" class="btn-off">OFF</button>
+                        </div>
+                        <button id="btnReset3" class="btn-reset btn-primary mt-2" style="display: none;">Reset Cooldown</button>
+                    </div>
+                </div>
+                <!-- AC -->
+                <div class="col-lg-4 col-md-6">
+                    <div class="control-card device-ac" data-relay="5">
+                        <div class="ac-cooling-lines"><span></span><span></span><span></span></div>
+                        <div class="device-icon device-icon-ac"><i class="fa-solid fa-snowflake"></i></div>
+                        <div class="device-name">AC</div>
+                        <div class="device-status">Offline</div>
+                        <div class="cooldown-container" id="cooldown-container-5" style="display: none;">
+                            <i class="fa-solid fa-clock"></i> Next override: <span id="cooldown-time-5">10:00</span>
+                        </div>
+                        <div class="control-btn-group">
+                            <button id="btnOn5" class="btn-on">ON</button>
+                            <button id="btnOff5" class="btn-off">OFF</button>
+                        </div>
+                        <button id="btnReset5" class="btn-reset btn-primary mt-2" style="display: none;">Reset Cooldown</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <div class="container">Live Data Dashboard &copy; 2026</div>
+    </div>
+
+    <script>
+        // ================= CONFIG =================
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // Use current host, or default to localhost:8000 for local file testing
+        const wsHost = window.location.host || 'localhost:8000';
+        const wsUrl = `${wsProtocol}//${wsHost}/ws/dashboard`;
+
+        let socket;
+
+        // ================= CHART DATA =================
+        const labels = [];
+        const currentData = [];
+        const temperatureData = [];
+        const humidityData = [];
+        const voltageData = [];
+        const energyData = [];
+        const occupancyData = [];
+
+        let currentChart, temperatureChart, humidityChart,
+            voltageChart, energyChart, occupancyChart;
+
+        // ================= DATE/TIME HELPERS =================
+        function formatApiDate(dateValue) {
+            if (!dateValue) return '--';
+            if (typeof dateValue === 'string' && dateValue.includes('-') && !dateValue.includes('T')) return dateValue;
+            const d = new Date(dateValue);
+            if (Number.isNaN(d.getTime())) return '--';
+            return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getFullYear()).slice(-2)}`;
+        }
+
+        function formatApiTime(timeValue) {
+            if (!timeValue) return '--';
+            if (typeof timeValue === 'string' && /^\d{2}:\d{2}:\d{2}$/.test(timeValue)) return timeValue;
+            const t = new Date(timeValue);
+            if (Number.isNaN(t.getTime())) return '--';
+            return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}:${String(t.getSeconds()).padStart(2, '0')}`;
+        }
+
+        // ================= THEME TOGGLE =================
+        const themeToggleBtn = document.getElementById("themeToggle");
+        const themeToggleIcon = document.getElementById("themeToggleIcon");
+
+        function applyTheme(mode) {
+            const isDark = mode === "dark";
+            document.body.classList.toggle("dark-mode", isDark);
+            document.body.classList.toggle("light-mode", !isDark);
+            themeToggleIcon.className = isDark ? "fa-solid fa-sun" : "fa-solid fa-moon";
+            localStorage.setItem("dashboardTheme", mode);
+        }
+
+        const savedTheme = localStorage.getItem("dashboardTheme");
+        if (savedTheme === "dark" || savedTheme === "light") {
+            applyTheme(savedTheme);
+        } else if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
+            applyTheme("dark");
+        }
+
+        themeToggleBtn.addEventListener("click", () => {
+            applyTheme(document.body.classList.contains("dark-mode") ? "light" : "dark");
+        });
+
+        // ================= RELAY STATE TRACKING =================
+        const relayState = { 1: false, 2: false, 3: false, 4: false, 5: false };
+        const pendingStates = { 1: false, 3: false, 5: false };
+
+        const lockoutEndTimes = {
+            1: parseInt(localStorage.getItem('lockout_end_1') || '0', 10),
+            3: parseInt(localStorage.getItem('lockout_end_3') || '0', 10),
+            5: parseInt(localStorage.getItem('lockout_end_5') || '0', 10)
+        };
+
+        const pendingTimeouts = {};
+
+        function updateControlButtonsState(relayNum) {
+            const btnOn = document.getElementById(`btnOn${relayNum}`);
+            const btnOff = document.getElementById(`btnOff${relayNum}`);
+            const btnReset = document.getElementById(`btnReset${relayNum}`);
+            if (!btnOn || !btnOff) return;
+
+            const isPending = !!pendingStates[relayNum];
+            const lockTime = parseInt(localStorage.getItem(`lockout_end_${relayNum}`) || '0', 10);
+            const isLocked = Date.now() < lockTime;
+            const shouldDisable = isPending || isLocked;
+
+            btnOn.disabled = shouldDisable;
+            btnOff.disabled = shouldDisable;
+
+            if (shouldDisable) {
+                btnOn.style.opacity = '0.5';
+                btnOn.style.pointerEvents = 'none';
+                btnOff.style.opacity = '0.5';
+                btnOff.style.pointerEvents = 'none';
+            } else {
+                btnOn.style.opacity = '1';
+                btnOn.style.pointerEvents = 'auto';
+                btnOff.style.opacity = '1';
+                btnOff.style.pointerEvents = 'auto';
+            }
+
+            if (btnReset) {
+                btnReset.style.display = isLocked ? 'block' : 'none';
+            }
+        }
+
+        function setButtonsPending(relayNum, isPending) {
+            pendingStates[relayNum] = isPending;
+            updateControlButtonsState(relayNum);
+        }
+
+        let cooldownInterval = null;
+
+        function updateCooldownUI(relayNum, remainingMs) {
+            const container = document.getElementById(`cooldown-container-${relayNum}`);
+            const timeEl = document.getElementById(`cooldown-time-${relayNum}`);
+            if (!container || !timeEl) return;
+
+            const totalSecs = Math.ceil(remainingMs / 1000);
+            const mins = Math.floor(totalSecs / 60);
+            const secs = totalSecs % 60;
+            const timeStr = `${mins}:${String(secs).padStart(2, '0')}`;
+
+            timeEl.textContent = timeStr;
+            container.style.display = 'flex';
+        }
+
+        function hideCooldownUI(relayNum) {
+            const container = document.getElementById(`cooldown-container-${relayNum}`);
+            if (container) {
+                container.style.display = 'none';
+            }
+            const btnReset = document.getElementById(`btnReset${relayNum}`);
+            if (btnReset) {
+                btnReset.style.display = 'none';
+            }
+        }
+
+        function startCooldownManager() {
+            if (cooldownInterval) return;
+            cooldownInterval = setInterval(() => {
+                let anyActive = false;
+                const now = Date.now();
+
+                [1, 3, 5].forEach(relayNum => {
+                    const lockTime = parseInt(localStorage.getItem(`lockout_end_${relayNum}`) || '0', 10);
+                    if (now < lockTime) {
+                        anyActive = true;
+                        lockoutEndTimes[relayNum] = lockTime;
+                        updateCooldownUI(relayNum, lockTime - now);
+                    } else {
+                        lockoutEndTimes[relayNum] = 0;
+                        localStorage.removeItem(`lockout_end_${relayNum}`);
+                        hideCooldownUI(relayNum);
+                        updateControlButtonsState(relayNum);
+                    }
+                });
+
+                if (!anyActive) {
+                    clearInterval(cooldownInterval);
+                    cooldownInterval = null;
+                }
+            }, 1000);
+        }
+
+        function clearLockout(relayNum) {
+            lockoutEndTimes[relayNum] = 0;
+            localStorage.removeItem(`lockout_end_${relayNum}`);
+            hideCooldownUI(relayNum);
+            updateControlButtonsState(relayNum);
+        }
+
+        function startLockout(relayNum) {
+            const selectEl = document.getElementById("cooldownSelect");
+            const durationSecs = selectEl ? parseInt(selectEl.value, 10) : 600;
+            if (durationSecs <= 0) {
+                clearLockout(relayNum);
+                return;
+            }
+            const lockoutDurationMs = durationSecs * 1000;
+            const endTime = Date.now() + lockoutDurationMs;
+            lockoutEndTimes[relayNum] = endTime;
+            localStorage.setItem(`lockout_end_${relayNum}`, endTime.toString());
+            updateControlButtonsState(relayNum);
+            startCooldownManager();
+        }
+
+        function applyRelayState(relayNum, isOn) {
+            relayState[relayNum] = isOn;
+
+            let wasPending = false;
+            if (pendingTimeouts[relayNum]) {
+                clearTimeout(pendingTimeouts[relayNum]);
+                delete pendingTimeouts[relayNum];
+                wasPending = true;
+            }
+
+            setButtonsPending(relayNum, false);
+
+            const btnOn = document.getElementById(`btnOn${relayNum}`);
+            const btnOff = document.getElementById(`btnOff${relayNum}`);
+            if (btnOn && btnOff) {
+                btnOn.classList.toggle('btn-success', isOn);
+                btnOff.classList.toggle('btn-danger', !isOn);
+            }
+
+            setDeviceAnimationState(relayNum, isOn);
+
+            if (wasPending) {
+                startLockout(relayNum);
+            }
+        }
+
+        // ================= DEVICE ANIMATION =================
+        function setDeviceAnimationState(relayNum, isOn) {
+            const card = document.querySelector(`.control-card[data-relay="${relayNum}"]`);
+            if (!card) return;
+            const statusEl = card.querySelector('.device-status');
+            if (relayNum === 1) {
+                card.classList.toggle('light-on', isOn);
+                card.classList.toggle('light-off', !isOn);
+                if (statusEl) statusEl.textContent = isOn ? 'Active' : 'Offline';
+            }
+            if (relayNum === 3) {
+                card.classList.toggle('fan-on', isOn);
+                card.classList.toggle('fan-off', !isOn);
+                if (statusEl) statusEl.textContent = isOn ? 'Running' : 'Offline';
+            }
+            if (relayNum === 5) {
+                card.classList.toggle('ac-on', isOn);
+                card.classList.toggle('ac-off', !isOn);
+                if (statusEl) statusEl.textContent = isOn ? 'Cooling' : 'Offline';
+            }
+        }
+
+        // ================= DEVICE MAPPINGS =================
+        function getRelayNumFromDevice(device) {
+            if (device === "lights") return 1;
+            if (device === "fans") return 3;
+            if (device === "ac") return 5;
+            return 1;
+        }
+
+        function getDeviceFromRelayNum(relayNum) {
+            if (relayNum === 1 || relayNum === 2) return "lights";
+            if (relayNum === 3 || relayNum === 4) return "fans";
+            if (relayNum === 5) return "ac";
+            return "lights";
+        }
+
+        // ================= WEBSOCKET SETUP =================
+        function connectWebSocket() {
+            console.log("Connecting to WebSocket:", wsUrl);
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log("WebSocket connected");
+                setApiStatus("online", "Live");
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    
+                    if (msg.type === "esp_status") {
+                        const espStatusPill = document.getElementById("apiStatus");
+                        const espStatusText = document.getElementById("apiStatusText");
+                        if (msg.connected) {
+                            espStatusPill.className = "status-pill online";
+                            espStatusText.textContent = "ESP Connected";
+                        } else {
+                            espStatusPill.className = "status-pill offline";
+                            espStatusText.textContent = "ESP Offline";
+                        }
+                    } else if (msg.type === "initial_state") {
+                        if (msg.states) {
+                            applyRelayState(1, msg.states.lights === 1);
+                            applyRelayState(2, msg.states.lights === 1);
+                            applyRelayState(3, msg.states.fans === 1);
+                            applyRelayState(4, msg.states.fans === 1);
+                            applyRelayState(5, msg.states.ac === 1);
+                        }
+                        if (msg.sensors) {
+                            updateSensorUI(msg.sensors);
+                        }
+                    } else if (msg.type === "sensor_data") {
+                        updateSensorUI(msg);
+                    } else if (msg.type === "relay_update") {
+                        const rNum = getRelayNumFromDevice(msg.device);
+                        applyRelayState(rNum, msg.state === 1);
+                        if (rNum === 1) applyRelayState(2, msg.state === 1);
+                        if (rNum === 3) applyRelayState(4, msg.state === 1);
+                    }
+                } catch (e) {
+                    console.error("Error handling message:", e);
+                }
+            };
+
+            socket.onclose = () => {
+                console.warn("WebSocket closed. Reconnecting in 3s...");
+                setApiStatus("offline", "Disconnected");
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            socket.onerror = (err) => {
+                console.error("WebSocket error:", err);
+                socket.close();
+            };
+        }
+
+        // ================= SEND COMMAND TO ESP =================
+        function controlLoad(relayNum, command) {
+            if (Date.now() < (lockoutEndTimes[relayNum] || 0)) {
+                console.warn(`Relay ${relayNum} is locked out. Command ignored.`);
+                return;
+            }
+
+            command = String(command).toUpperCase();
+            const espCommand = (command === "ON") ? 1 : 0;
+            const device = getDeviceFromRelayNum(relayNum);
+            
+            const payload = JSON.stringify({
+                type: "command",
+                device: device,
+                state: espCommand
+            });
+
+            setButtonsPending(relayNum, true);
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(payload);
+                console.log(`Command sent: ${device} → ${command}`);
+            } else {
+                console.error("WebSocket disconnected. Command aborted.");
+                setButtonsPending(relayNum, false);
+                return;
+            }
+
+            pendingTimeouts[relayNum] = setTimeout(() => {
+                console.warn(`Relay ${relayNum}: no confirmation from ESP, reverting UI`);
+                delete pendingTimeouts[relayNum];
+                setButtonsPending(relayNum, false);
+                applyRelayState(relayNum, relayState[relayNum]);
+            }, 3000);
+        }
+
+        // ================= BUTTON WIRING =================
+        for (let i = 1; i <= 5; i++) {
+            const btnOn = document.getElementById(`btnOn${i}`);
+            const btnOff = document.getElementById(`btnOff${i}`);
+            const btnReset = document.getElementById(`btnReset${i}`);
+            if (!btnOn || !btnOff) continue;
+
+            btnOn.addEventListener("click", () => {
+                controlLoad(i, "ON");
+            });
+
+            btnOff.addEventListener("click", () => {
+                controlLoad(i, "OFF");
+            });
+
+            if (btnReset) {
+                btnReset.addEventListener("click", () => {
+                    clearLockout(i);
+                });
+            }
+        }
+
+        // Override settings setup
+        const cooldownSelect = document.getElementById("cooldownSelect");
+        if (cooldownSelect) {
+            const savedCooldown = localStorage.getItem("override_cooldown_secs");
+            if (savedCooldown !== null) {
+                cooldownSelect.value = savedCooldown;
+            }
+            cooldownSelect.addEventListener("change", () => {
+                localStorage.setItem("override_cooldown_secs", cooldownSelect.value);
+                // If None is selected, clear any active lockouts immediately
+                if (parseInt(cooldownSelect.value, 10) === 0) {
+                    [1, 3, 5].forEach(clearLockout);
+                }
+            });
+        }
+
+        const btnResetAll = document.getElementById("btnResetAll");
+        if (btnResetAll) {
+            btnResetAll.addEventListener("click", () => {
+                [1, 3, 5].forEach(clearLockout);
+            });
+        }
+
+        const statusElements = {
+            container: document.getElementById("apiStatus"),
+            text: document.getElementById("apiStatusText"),
+            lastUpdated: document.getElementById("lastUpdatedLabel")
+        };
+
+        function setApiStatus(state, message) {
+            statusElements.container.classList.remove("loading", "online", "offline");
+            statusElements.container.classList.add(state);
+            statusElements.text.textContent = message;
+        }
+
+        function setLastUpdatedLabel(timeLabel) {
+            statusElements.lastUpdated.textContent = `Last update: ${timeLabel}`;
+        }
+
+        // ================= CREATE CHART =================
+        function createChart(ctx, label, data, borderColor) {
+            const bgColor = borderColor.replace('1)', '0.08)');
+            
+            let yOptions = {
+                beginAtZero: true,
+                grid: { color: 'rgba(0,0,0,0.05)' },
+                ticks: { color: '#8090ad' }
+            };
+
+            if (label === 'Voltage') {
+                yOptions.beginAtZero = false;
+                yOptions.suggestedMin = 210;
+                yOptions.suggestedMax = 250;
+            } else if (label === 'Temperature') {
+                yOptions.beginAtZero = false;
+                yOptions.suggestedMin = 15;
+                yOptions.suggestedMax = 35;
+            } else if (label === 'Humidity') {
+                yOptions.beginAtZero = false;
+                yOptions.suggestedMin = 20;
+                yOptions.suggestedMax = 90;
+            } else if (label === 'Human Presence') {
+                yOptions.min = 0;
+                yOptions.max = 1;
+                yOptions.ticks = {
+                    color: '#8090ad',
+                    stepSize: 1,
+                    callback: function(value) {
+                        if (value === 0) return 'Absent';
+                        if (value === 1) return 'Present';
+                        return '';
+                    }
+                };
+            }
+
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label,
+                        data,
+                        borderColor,
+                        backgroundColor: bgColor,
+                        borderWidth: 2,
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: borderColor,
+                        pointRadius: 3,
+                        pointHoverRadius: 6,
+                        pointBorderWidth: 2,
+                        fill: true,
+                        tension: 0.38
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    animation: { duration: 650, easing: 'easeInOutCubic' },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#8090ad', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }
+                        },
+                        y: yOptions
+                    },
+                    interaction: { intersect: false, mode: 'index' }
+                }
+            });
+        }
+
+        function getAdaptiveDuration(series) {
+            if (series.length < 2) return 620;
+            const latest = series[series.length - 1];
+            const previous = series[series.length - 2];
+            const baseline = Math.max(Math.abs(previous), 1);
+            return Math.round(500 + Math.min(Math.abs(latest - previous) / baseline, 1.2) * 650);
+        }
+
+        function updateChartSmooth(chart, series) {
+            if (!chart) return;
+            chart.options.animation.duration = getAdaptiveDuration(series);
+            chart.update();
+        }
+
+        // ================= UPDATE SENSOR UI =================
+        function updateSensorUI(data) {
+            const voltage = parseFloat(data.voltage || 0);
+            const current = parseFloat(data.current || 0);
+            const temperature = parseFloat(data.temperature || 0);
+            const humidity = parseFloat(data.humidity || 0);
+            const energy = parseFloat(data.energy || 0);
+            const occupancy = parseInt(data.occupancy, 10) === 1 ? 1 : 0;
+            const dateText = formatApiDate(data.date);
+            const timeText = formatApiTime(data.time);
+
+            document.getElementById('date').textContent = dateText;
+            document.getElementById('time').textContent = timeText;
+            document.getElementById('voltage').textContent = voltage.toFixed(1);
+            document.getElementById('current').textContent = current.toFixed(2);
+            document.getElementById('temperature').textContent = temperature.toFixed(1);
+            document.getElementById('humidity').textContent = humidity.toFixed(1);
+            document.getElementById('energy').textContent = energy.toFixed(5);
+
+            const occupancyEl = document.getElementById('occupancy');
+            if (occupancy === 1) {
+                occupancyEl.textContent = 'Present';
+                occupancyEl.className = 'occupancy-present';
+            } else {
+                occupancyEl.textContent = 'Absent';
+                occupancyEl.className = 'occupancy-absent';
+            }
+
+            const timeLabel = timeText !== '--' ? timeText : new Date().toLocaleTimeString();
+            setLastUpdatedLabel(timeLabel);
+
+            if (labels.length > 0 && labels[labels.length - 1] === timeLabel) {
+                return;
+            }
+
+            labels.push(timeLabel);
+            currentData.push(current);
+            temperatureData.push(temperature);
+            humidityData.push(humidity);
+            voltageData.push(voltage);
+            energyData.push(energy);
+            occupancyData.push(occupancy);
+
+            if (labels.length > 20) {
+                labels.shift();
+                currentData.shift();
+                temperatureData.shift();
+                humidityData.shift();
+                voltageData.shift();
+                energyData.shift();
+                occupancyData.shift();
+            }
+
+            if (!currentChart) {
+                currentChart = createChart(document.getElementById('currentChart').getContext('2d'), 'Current', currentData, 'rgba(245,158,11,1)');
+                temperatureChart = createChart(document.getElementById('temperatureChart').getContext('2d'), 'Temperature', temperatureData, 'rgba(239,68,68,1)');
+                humidityChart = createChart(document.getElementById('humidityChart').getContext('2d'), 'Humidity', humidityData, 'rgba(6,182,212,1)');
+                voltageChart = createChart(document.getElementById('voltageChart').getContext('2d'), 'Voltage', voltageData, 'rgba(123,77,255,1)');
+                energyChart = createChart(document.getElementById('energyChart').getContext('2d'), 'Energy', energyData, 'rgba(16,185,129,1)');
+                occupancyChart = createChart(document.getElementById('occupancyChart').getContext('2d'), 'Human Presence', occupancyData, 'rgba(124,58,237,1)');
+            } else {
+                updateChartSmooth(currentChart, currentData);
+                updateChartSmooth(temperatureChart, temperatureData);
+                updateChartSmooth(humidityChart, humidityData);
+                updateChartSmooth(voltageChart, voltageData);
+                updateChartSmooth(energyChart, energyData);
+                updateChartSmooth(occupancyChart, occupancyData);
+            }
+        }
+
+        // ================= START =================
+        [1, 3, 5].forEach(relayNum => {
+            updateControlButtonsState(relayNum);
+        });
+        startCooldownManager();
+        connectWebSocket();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+
+</html>
