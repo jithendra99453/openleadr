@@ -8,9 +8,9 @@ const char* ssid = "IDEA LAB-5G";
 const char* password = "idealab$9889";
 
 // WebSocket Server Configuration (Laptop IP)
-const char* websocket_server_host = "192.168.0.159";
+const char* websocket_server_host = "192.168.0.160";
 const uint16_t websocket_server_port = 8000;
-const char* websocket_server_path = "/ws/esp";
+const char* websocket_server_path = "/ws/esp/text";
 
 // Relay Pins
 #define RELAY1 D1
@@ -114,6 +114,11 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (client.available()) {
       client.poll();
+      static unsigned long last_ping = 0;
+      if (millis() - last_ping > 20000) {
+        last_ping = millis();
+        client.ping();
+      }
     } else {
       unsigned long now = millis();
       if (now - last_reconnect_attempt > 5000) {

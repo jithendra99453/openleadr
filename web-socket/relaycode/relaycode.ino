@@ -17,7 +17,7 @@ String wifi_password = "idealab$9889";
 
 // Python Backend WebSocket Configuration
 // Change this to your PC's local IP address running the server
-const char* ws_server_url = "ws://192.168.0.160:8000/ws/esp"; 
+const char* ws_server_url = "ws://192.168.0.160:8000/ws/esp/json"; 
 
 // Relay Configuration (Active LOW = relay triggers on LOW signal)
 const bool RELAY_ACTIVE_LOW = true;

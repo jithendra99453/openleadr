@@ -56,10 +56,15 @@ sensor_state = {
 }
 
 # WebSocket connections tracking
-dashboard_connections: Set[WebSocket] = set()
-esp_connection = None
-esp_connected_status = False
-esp_format = "text"  # Can be "text" (legacy) or "json" (new)
+master_dashboards: Set[WebSocket] = set()
+client_dashboards: Set[WebSocket] = set()
+
+# Separate ESP connections
+esp_json_connection = None
+esp_json_connected_status = False
+
+esp_text_connection = None
+esp_text_connected_status = False
 
 # Mutex to protect state updates
 state_lock = asyncio.Lock()
@@ -140,19 +145,28 @@ def log_replay_buffer_transition(action_device: str, action_state: int, state_be
     except Exception as e:
         logger.error(f"Failed to log replay buffer: {e}")
 
-async def broadcast_to_dashboards(message: dict):
-    """Send JSON message to all connected dashboards."""
-    if not dashboard_connections:
+async def broadcast_to_dashboards(message: dict, force_format: str = None):
+    """Send JSON message to connected dashboards."""
+    targets = set()
+    if force_format == "json":
+        targets = master_dashboards
+    elif force_format == "text":
+        targets = client_dashboards
+    else:
+        # Default: broadcast to all dashboards
+        targets = master_dashboards.union(client_dashboards)
+        
+    if not targets:
         return
     payload = json.dumps(message)
-    # Create list of tasks to send concurrently
     tasks = []
-    for ws in list(dashboard_connections):
+    for ws in list(targets):
         try:
             tasks.append(asyncio.create_task(ws.send_text(payload)))
         except Exception as e:
             logger.error(f"Error preparing broadcast: {e}")
-            dashboard_connections.discard(ws)
+            master_dashboards.discard(ws)
+            client_dashboards.discard(ws)
             
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -186,36 +200,91 @@ async def sensor_simulation_loop():
         except Exception as e:
             logger.error(f"Error in sensor simulation loop: {e}")
 
-@app.websocket("/ws/esp")
-async def websocket_esp(websocket: WebSocket):
-    global esp_connection, esp_connected_status, esp_format
+async def handle_esp_connection(websocket: WebSocket, strategy: str):
+    global esp_json_connection, esp_json_connected_status
+    global esp_text_connection, esp_text_connected_status
+    
     await websocket.accept()
-    esp_connection = websocket
-    esp_connected_status = True
-    logger.info("✅ ESP8266 connected to FastAPI WebSocket server!")
     
-    # Notify all dashboards
-    await broadcast_to_dashboards({
-        "type": "esp_status",
-        "connected": True
-    })
+    assigned_format = None
     
+    if strategy == "json":
+        assigned_format = "json"
+        if esp_json_connection:
+            try:
+                await esp_json_connection.close()
+            except Exception:
+                pass
+        esp_json_connection = websocket
+        esp_json_connected_status = True
+        logger.info("✅ ESP8266 (JSON) connected directly to /ws/esp/json")
+        await broadcast_to_dashboards({"type": "esp_status", "connected": True}, force_format="json")
+        
+    elif strategy == "text":
+        assigned_format = "text"
+        if esp_text_connection:
+            try:
+                await esp_text_connection.close()
+            except Exception:
+                pass
+        esp_text_connection = websocket
+        esp_text_connected_status = True
+        logger.info("✅ ESP8266 (Text) connected directly to /ws/esp/text")
+        await broadcast_to_dashboards({"type": "esp_status", "connected": True}, force_format="text")
+        
+    else:
+        logger.info("ESP8266 connected to legacy /ws/esp. Waiting for first message to detect format...")
+        
     try:
         async for message in websocket.iter_text():
             msg_str = str(message).strip()
-            logger.info(f"Received from ESP: {msg_str}")
+            logger.info(f"Received from ESP ({assigned_format or 'detecting'}): {msg_str}")
+            
+            # Detect format if not assigned yet
+            if assigned_format is None:
+                is_json = False
+                try:
+                    data = json.loads(msg_str)
+                    if isinstance(data, dict) and "device" in data:
+                        is_json = True
+                except json.JSONDecodeError:
+                    pass
+                
+                if is_json:
+                    assigned_format = "json"
+                    if esp_json_connection:
+                        try:
+                            await esp_json_connection.close()
+                        except Exception:
+                            pass
+                    esp_json_connection = websocket
+                    esp_json_connected_status = True
+                    logger.info("Automatically detected JSON strategy. Registered as JSON ESP.")
+                    await broadcast_to_dashboards({"type": "esp_status", "connected": True}, force_format="json")
+                else:
+                    assigned_format = "text"
+                    if esp_text_connection:
+                        try:
+                            await esp_text_connection.close()
+                        except Exception:
+                            pass
+                    esp_text_connection = websocket
+                    esp_text_connected_status = True
+                    logger.info("Automatically detected Text strategy. Registered as Text ESP.")
+                    await broadcast_to_dashboards({"type": "esp_status", "connected": True}, force_format="text")
             
             device = None
             state_val = None
             
-            # Attempt to parse as JSON first (from relaycode.ino)
-            try:
-                data = json.loads(msg_str)
-                esp_format = "json"
-                device = data.get("device")
-                state_val = int(data.get("state", 0))
-            except json.JSONDecodeError:
-                # Fallback to plain text parsing (from relaycode2.ino)
+            if assigned_format == "json":
+                try:
+                    data = json.loads(msg_str)
+                    if isinstance(data, dict):
+                        device = data.get("device")
+                        state_val = int(data.get("state", 0))
+                except (json.JSONDecodeError, ValueError, TypeError) as e:
+                    logger.error(f"Failed to parse JSON from ESP: {e}")
+            else:
                 if "Relay1" in msg_str:
                     device = "lights"
                     state_val = 1 if "ON" in msg_str else 0
@@ -225,6 +294,9 @@ async def websocket_esp(websocket: WebSocket):
                 elif "Relay3" in msg_str:
                     device = "lights3"
                     state_val = 1 if "ON" in msg_str else 0
+                elif msg_str == "Unknown Command":
+                    logger.warning("ESP returned Unknown Command!")
+                    continue
                 
             if device is not None and state_val is not None:
                 async with state_lock:
@@ -237,10 +309,8 @@ async def websocket_esp(websocket: WebSocket):
                         "relay_ac": relay_states.get("ac", 1)
                     })
                     
-                    # Update server's internal relay state
                     relay_states[device] = state_val
                     
-                    # Sync aliases
                     if device == "fans":
                         relay_states["lights2"] = state_val
                     elif device == "ac":
@@ -259,17 +329,15 @@ async def websocket_esp(websocket: WebSocket):
                         "relay_ac": relay_states.get("ac", 1)
                     })
                     
-                logger.info(f"ESP Confirmed: {device} -> {state_val}")
+                logger.info(f"ESP Confirmed ({assigned_format}): {device} -> {state_val}")
                 log_replay_buffer_transition(device, state_val, state_before, state_after)
                 
-                # Send update to all dashboards
                 await broadcast_to_dashboards({
                     "type": "relay_update",
                     "device": device,
                     "state": state_val
-                })
+                }, force_format=assigned_format)
                 
-                # Broadcast alias update
                 alias_device = None
                 if device == "fans":
                     alias_device = "lights2"
@@ -285,19 +353,38 @@ async def websocket_esp(websocket: WebSocket):
                         "type": "relay_update",
                         "device": alias_device,
                         "state": state_val
-                    })
+                    }, force_format=assigned_format)
     except WebSocketDisconnect:
-        logger.warning("ESP8266 disconnected.")
+        logger.warning(f"ESP8266 ({assigned_format or 'detect'}) disconnected.")
     except Exception as e:
-        logger.error(f"Error in ESP WebSocket: {e}")
+        logger.error(f"Error in ESP WebSocket ({assigned_format or 'detect'}): {e}")
     finally:
-        esp_connection = None
-        esp_connected_status = False
-        logger.warning("Disconnected from ESP8266 WebSocket.")
-        await broadcast_to_dashboards({
-            "type": "esp_status",
-            "connected": False
-        })
+        if assigned_format == "json":
+            if esp_json_connection == websocket:
+                esp_json_connection = None
+                esp_json_connected_status = False
+                logger.warning("Disconnected from ESP8266 (JSON) WebSocket.")
+                await broadcast_to_dashboards({"type": "esp_status", "connected": False}, force_format="json")
+        elif assigned_format == "text":
+            if esp_text_connection == websocket:
+                esp_text_connection = None
+                esp_text_connected_status = False
+                logger.warning("Disconnected from ESP8266 (Text) WebSocket.")
+                await broadcast_to_dashboards({"type": "esp_status", "connected": False}, force_format="text")
+        else:
+            logger.warning("Disconnected from legacy ESP8266 before format could be detected.")
+
+@app.websocket("/ws/esp")
+async def websocket_esp_legacy(websocket: WebSocket):
+    await handle_esp_connection(websocket, "detect")
+
+@app.websocket("/ws/esp/json")
+async def websocket_esp_json(websocket: WebSocket):
+    await handle_esp_connection(websocket, "json")
+
+@app.websocket("/ws/esp/text")
+async def websocket_esp_text(websocket: WebSocket):
+    await handle_esp_connection(websocket, "text")
 
 @app.on_event("startup")
 async def startup_event():
@@ -345,20 +432,78 @@ async def get_client3():
 
 @app.get("/api/set_esp_ip")
 async def set_esp_ip(ip: str = Query(..., description="The IP address of the ESP8266")):
-    global ESP_IP, esp_connection
+    global ESP_IP, esp_json_connection, esp_text_connection
     cleaned_ip = ip.strip()
     if cleaned_ip:
         ESP_IP = cleaned_ip
         logger.info(f"ESP IP dynamically updated to: {ESP_IP}")
-        if esp_connection:
-            logger.info("Closing active ESP connection to trigger immediate reconnect...")
-            await esp_connection.close()
+        if esp_json_connection:
+            logger.info("Closing active JSON ESP connection to trigger immediate reconnect...")
+            await esp_json_connection.close()
+        if esp_text_connection:
+            logger.info("Closing active Text ESP connection to trigger immediate reconnect...")
+            await esp_text_connection.close()
         return {"status": "ok", "esp_ip": ESP_IP}
     return {"status": "error", "message": "Invalid IP address"}
 
+async def simulate_local_response(device: str, state: int, target_format: str):
+    async with state_lock:
+        state_before = sensor_state.copy()
+        state_before.update({
+            "relay_lights": relay_states["lights"],
+            "relay_lights2": relay_states["lights2"],
+            "relay_lights3": relay_states["lights3"],
+            "relay_fans": relay_states.get("fans", 1),
+            "relay_ac": relay_states.get("ac", 1)
+        })
+        
+        relay_states[device] = state
+        
+        if device == "fans":
+            relay_states["lights2"] = state
+        elif device == "ac":
+            relay_states["lights3"] = state
+        elif device == "lights2":
+            relay_states["fans"] = state
+        elif device == "lights3":
+            relay_states["ac"] = state
+        
+        state_after = sensor_state.copy()
+        state_after.update({
+            "relay_lights": relay_states["lights"],
+            "relay_lights2": relay_states["lights2"],
+            "relay_lights3": relay_states["lights3"],
+            "relay_fans": relay_states.get("fans", 1),
+            "relay_ac": relay_states.get("ac", 1)
+        })
+        
+    log_replay_buffer_transition(device, state, state_before, state_after)
+    
+    await broadcast_to_dashboards({
+        "type": "relay_update",
+        "device": device,
+        "state": state
+    }, force_format=target_format)
+    
+    alias_device = None
+    if device == "fans":
+        alias_device = "lights2"
+    elif device == "ac":
+        alias_device = "lights3"
+    elif device == "lights2":
+        alias_device = "fans"
+    elif device == "lights3":
+        alias_device = "ac"
+        
+    if alias_device:
+        await broadcast_to_dashboards({
+            "type": "relay_update",
+            "device": alias_device,
+            "state": state
+        }, force_format=target_format)
+
 @app.websocket("/ws/dashboard")
 async def websocket_dashboard(websocket: WebSocket):
-    # Parse client_id from query params
     query_string = websocket.scope.get("query_string", b"").decode()
     params = parse_qs(query_string)
     client_id_list = params.get("client_id", [])
@@ -371,29 +516,27 @@ async def websocket_dashboard(websocket: WebSocket):
     else:
         client_id = None
     
-    # Determine allowed device for this client
     allowed_device = CLIENT_DEVICE_MAP.get(client_id) if client_id else None
     
     await websocket.accept()
-    dashboard_connections.add(websocket)
-    
-    if client_id and allowed_device:
-        logger.info(f"Dashboard client {client_id} connected (controls: {allowed_device}). Total: {len(dashboard_connections)}")
+    if client_id in [1, 2, 3]:
+        client_dashboards.add(websocket)
+        logger.info(f"Dashboard client {client_id} connected (controls: {allowed_device}). Total client_dashboards: {len(client_dashboards)}")
+        await websocket.send_json({
+            "type": "esp_status",
+            "connected": esp_text_connected_status
+        })
     else:
-        logger.info(f"Dashboard client connected (no client_id, full access). Total: {len(dashboard_connections)}")
+        master_dashboards.add(websocket)
+        logger.info(f"Dashboard client connected (no client_id, full access). Total master_dashboards: {len(master_dashboards)}")
+        await websocket.send_json({
+            "type": "esp_status",
+            "connected": esp_json_connected_status
+        })
     
     try:
-        # Send initial status
         async with state_lock:
             date_str, time_str = get_current_time_str()
-            # Send initial ESP connection state
-            esp_connected = esp_connected_status
-            await websocket.send_json({
-                "type": "esp_status",
-                "connected": esp_connected
-            })
-            
-            # Send initial states
             await websocket.send_json({
                 "type": "initial_state",
                 "states": relay_states,
@@ -411,7 +554,6 @@ async def websocket_dashboard(websocket: WebSocket):
             })
             
         while True:
-            # Receive command from Dashboard
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
@@ -419,7 +561,6 @@ async def websocket_dashboard(websocket: WebSocket):
                     device = msg.get("device")
                     state = int(msg.get("state", 0))
                     
-                    # ACCESS CONTROL: enforce client_id -> device mapping
                     if allowed_device and device != allowed_device:
                         logger.warning(f"ACCESS DENIED: Client {client_id} tried to control '{device}' (allowed: '{allowed_device}')")
                         await websocket.send_json({
@@ -429,23 +570,25 @@ async def websocket_dashboard(websocket: WebSocket):
                         continue
                     
                     if device in relay_states:
-                        # Log user action
                         date_str, time_str = get_current_time_str()
                         logger.info(f"[{time_str}] Client {client_id or 'legacy'} Action: {device.upper()} -> {state}")
                         logger.info(f"Current State: Voltage={sensor_state['voltage']:.1f}V, Current={sensor_state['current']:.2f}A, Energy={sensor_state['energy']:.5f}kWh")
                         
-                        # Check if ESP is connected
-                        if esp_connected_status and esp_connection:
-                            if esp_format == "json":
-                                # JSON format for new relaycode.ino
+                        is_master_client = (client_id is None)
+                        
+                        if is_master_client:
+                            if esp_json_connected_status and esp_json_connection:
                                 payload = json.dumps({
                                     "device": device,
                                     "state": state
                                 })
-                                await esp_connection.send_text(payload)
+                                await esp_json_connection.send_text(payload)
                                 logger.info(f"Forwarded JSON command to ESP: {payload}")
                             else:
-                                # Legacy Text format for relaycode2.ino
+                                logger.warning("ESP8266 (JSON) is not connected! Simulating response locally (Simulator Fallback).")
+                                await simulate_local_response(device, state, "json")
+                        else:
+                            if esp_text_connected_status and esp_text_connection:
                                 cmd_str = ""
                                 if device == "lights":
                                     cmd_str = "R1_ON" if state == 1 else "R1_OFF"
@@ -455,78 +598,23 @@ async def websocket_dashboard(websocket: WebSocket):
                                     cmd_str = "R3_ON" if state == 1 else "R3_OFF"
                                     
                                 if cmd_str:
-                                    await esp_connection.send_text(cmd_str)
+                                    await esp_text_connection.send_text(cmd_str)
                                     logger.info(f"Forwarded text command to ESP: {cmd_str}")
-                        else:
-                            logger.warning("ESP8266 is not connected! Simulating response locally (Simulator Fallback).")
-                            
-                            async with state_lock:
-                                state_before = sensor_state.copy()
-                                state_before.update({
-                                    "relay_lights": relay_states["lights"],
-                                    "relay_lights2": relay_states["lights2"],
-                                    "relay_lights3": relay_states["lights3"],
-                                    "relay_fans": relay_states.get("fans", 1),
-                                    "relay_ac": relay_states.get("ac", 1)
-                                })
-                                
-                                # Update server's internal relay state
-                                relay_states[device] = state
-                                
-                                # Sync aliases
-                                if device == "fans":
-                                    relay_states["lights2"] = state
-                                elif device == "ac":
-                                    relay_states["lights3"] = state
-                                elif device == "lights2":
-                                    relay_states["fans"] = state
-                                elif device == "lights3":
-                                    relay_states["ac"] = state
-                                
-                                state_after = sensor_state.copy()
-                                state_after.update({
-                                    "relay_lights": relay_states["lights"],
-                                    "relay_lights2": relay_states["lights2"],
-                                    "relay_lights3": relay_states["lights3"],
-                                    "relay_fans": relay_states.get("fans", 1),
-                                    "relay_ac": relay_states.get("ac", 1)
-                                })
-                                
-                            # Log transition to replay buffer
-                            log_replay_buffer_transition(device, state, state_before, state_after)
-                            
-                            # Broadcast confirmed update back to dashboards
-                            await broadcast_to_dashboards({
-                                "type": "relay_update",
-                                "device": device,
-                                "state": state
-                             })
-                            
-                            # Broadcast alias update
-                            alias_device = None
-                            if device == "fans":
-                                alias_device = "lights2"
-                            elif device == "ac":
-                                alias_device = "lights3"
-                            elif device == "lights2":
-                                alias_device = "fans"
-                            elif device == "lights3":
-                                alias_device = "ac"
-                                
-                            if alias_device:
-                                await broadcast_to_dashboards({
-                                    "type": "relay_update",
-                                    "device": alias_device,
-                                    "state": state
-                                })
+                            else:
+                                logger.warning("ESP8266 (Text) is not connected! Simulating response locally (Simulator Fallback).")
+                                await simulate_local_response(device, state, "text")
             except json.JSONDecodeError:
                 logger.error(f"Invalid JSON received from dashboard: {data}")
             except Exception as e:
                 logger.error(f"Error handling dashboard message: {e}")
                 
     except WebSocketDisconnect:
-        dashboard_connections.discard(websocket)
-        logger.info(f"Dashboard client {client_id or 'legacy'} disconnected. Total: {len(dashboard_connections)}")
+        if client_id in [1, 2, 3]:
+            client_dashboards.discard(websocket)
+            logger.info(f"Dashboard client {client_id} disconnected. Total client_dashboards: {len(client_dashboards)}")
+        else:
+            master_dashboards.discard(websocket)
+            logger.info(f"Dashboard client legacy disconnected. Total master_dashboards: {len(master_dashboards)}")
 
 if __name__ == "__main__":
     import uvicorn
