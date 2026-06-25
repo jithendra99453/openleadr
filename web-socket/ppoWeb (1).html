@@ -1860,7 +1860,7 @@
             if (device === "lights") return 1;
             if (device === "fans") return 3;
             if (device === "ac") return 5;
-            return 1;
+            return null;
         }
 
         function getDeviceFromRelayNum(relayNum) {
@@ -1909,9 +1909,11 @@
                         updateSensorUI(msg);
                     } else if (msg.type === "relay_update") {
                         const rNum = getRelayNumFromDevice(msg.device);
-                        applyRelayState(rNum, msg.state === 1);
-                        if (rNum === 1) applyRelayState(2, msg.state === 1);
-                        if (rNum === 3) applyRelayState(4, msg.state === 1);
+                        if (rNum !== null) {
+                            applyRelayState(rNum, msg.state === 1);
+                            if (rNum === 1) applyRelayState(2, msg.state === 1);
+                            if (rNum === 3) applyRelayState(4, msg.state === 1);
+                        }
                     }
                 } catch (e) {
                     console.error("Error handling message:", e);

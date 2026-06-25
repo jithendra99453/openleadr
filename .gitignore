@@ -11,6 +11,7 @@ venv/
 env/
 ENV/
 python_env/
+*.venv/
 
 # =========================
 # Distribution / Packaging
@@ -80,3 +81,11 @@ Thumbs.db
 *.elf
 *.bin
 *.hex
+
+# =========================
+# Sub-project: openleadr-python
+# =========================
+server-client/openleadr-python/pyopenadr.egg-info/
+server-client/openleadr-python/docs/_build/
+server-client/openleadr-python/examples/
+server-client/openleadr-python/static/

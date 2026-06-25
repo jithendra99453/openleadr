@@ -55,20 +55,8 @@ class OpenADRVen:
         self.ven_id = None
         self.session = None
         
-        # Extract index from VEN_INDEX env var or from ven_name suffix
-        ven_idx_str = os.environ.get("VEN_INDEX", "")
-        if not ven_idx_str:
-            match = re.search(r'\d+$', ven_name)
-            if match:
-                ven_idx_str = match.group()
-        try:
-            self.ven_index = int(ven_idx_str)
-        except ValueError:
-            self.ven_index = 1 # default to 1
-            
-        if self.ven_index not in [1, 2, 3]:
-            self.ven_index = 1
-            
+        # Enforce client index 1 to only control Relay 1 (lights)
+        self.ven_index = 1
         self.ems = SimpleEMSController(ws_url=f"{EMS_WS_URL}?client_id={self.ven_index}")
         self.restore_task = None
         self.input_queue = None

@@ -31,27 +31,7 @@ class SimpleEMSController:
 
         # Corrected Relay mapping to match C++ (relaycode.ino) and Dashboard:
         # Client 1 controls Relay 1 (lights)
-        # Client 2 controls Relay 2 (lights2)
-        # Client 3 controls Relay 3 (lights3)
         self.loads = {
-            "lights3": {
-                "relay_ids": [3],
-                "name": "Lights 3",
-                "type": "light",
-                "power_w": 200,
-                "state": "ON",
-                "priority": 3,
-                "emoji": "💡"
-            },
-            "lights2": {
-                "relay_ids": [2],
-                "name": "Lights 2",
-                "type": "light",
-                "power_w": 200,
-                "state": "ON",
-                "priority": 2,
-                "emoji": "💡"
-            },
             "lights": {
                 "relay_ids": [1],
                 "name": "Lights 1",
@@ -62,7 +42,7 @@ class SimpleEMSController:
                 "emoji": "💡"
             }
         }
-        self.relay_states = {1: True, 2: True, 3: True}
+        self.relay_states = {1: True}
         self.active_reduction = None
 
     async def connect(self, timeout=5):
@@ -166,9 +146,7 @@ class SimpleEMSController:
 
     async def _update_local_states_from_dict(self, states: dict):
         device_to_relays = {
-            "lights": [1],
-            "lights2": [2],
-            "lights3": [3]
+            "lights": [1]
         }
         for device, state in states.items():
             if device in device_to_relays:
@@ -183,14 +161,8 @@ class SimpleEMSController:
     async def send_command(self, relay_id: int, state: str):
         # Map relay_id to device name:
         # 1 -> "lights"
-        # 2 -> "lights2"
-        # 3 -> "lights3"
         if relay_id == 1:
             device = "lights"
-        elif relay_id == 2:
-            device = "lights2"
-        elif relay_id == 3:
-            device = "lights3"
         else:
             print(f"⚠️ Unknown relay_id: {relay_id}", flush=True)
             return
@@ -245,8 +217,6 @@ class SimpleEMSController:
 
         # Map target resource IDs to internal load keys
         resource_to_load_key = {
-            "lights3": "lights3",
-            "lights2": "lights2",
             "lights": "lights",
             "lighting": "lights"
         }
@@ -327,18 +297,7 @@ class SimpleEMSController:
         
         # Determine targeted load based on client_id:
         # client_id 1 -> lights (Relay 1)
-        # client_id 2 -> lights2 (Relay 2)
-        # client_id 3 -> lights3 (Relay 3)
-        loads_to_shed = []
-        if client_id == 1:
-            loads_to_shed = ["lights"]
-        elif client_id == 2:
-            loads_to_shed = ["lights2"]
-        elif client_id == 3:
-            loads_to_shed = ["lights3"]
-        else:
-            # Default to all if no client_id or invalid
-            loads_to_shed = list(self.loads.keys())
+        loads_to_shed = ["lights"]
             
         print(f"\n🔧 Sending commands to turn OFF targeted relays:", flush=True)
         for load_key in loads_to_shed:
